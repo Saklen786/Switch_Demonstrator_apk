@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Used by the SplashScreen theme (FIXED #47) -->
+    <color name="splash_background">#FF050710</color>
+</resources>

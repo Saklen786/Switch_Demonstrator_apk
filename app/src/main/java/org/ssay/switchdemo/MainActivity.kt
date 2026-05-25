@@ -1,36 +1,49 @@
 package org.ssay.switchdemo
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.ssay.switchdemo.data.BleConnectionState
-import org.ssay.switchdemo.data.SwitchState
+import org.ssay.switchdemo.data.BleManager
+import org.ssay.switchdemo.data.Screen
 import org.ssay.switchdemo.ui.components.BleConnectBar
+import org.ssay.switchdemo.ui.components.BluetoothOffDialog
 import org.ssay.switchdemo.ui.components.BottomNavBar
+import org.ssay.switchdemo.ui.components.DisconnectConfirmDialog
+import org.ssay.switchdemo.ui.components.PermissionDeniedDialog
 import org.ssay.switchdemo.ui.screens.AboutScreen
 import org.ssay.switchdemo.ui.screens.DashboardScreen
+import org.ssay.switchdemo.ui.screens.OnboardingScreen
 import org.ssay.switchdemo.ui.screens.SettingsScreen
 import org.ssay.switchdemo.ui.theme.SwitchDemonstratorTheme
 import org.ssay.switchdemo.viewmodel.DashboardViewModel
@@ -44,146 +57,201 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
+        // FIXED #47: SplashScreen API.
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
-        val missingPermissions = requiredPermissions.filter {
+        // Drop the splash on the very next frame.
+        splash.setKeepOnScreenCondition { false }
+
+        // FIXED #6: if the user denies permission(s) here, BleManager will emit
+        //           Event.PermissionDenied the next time the user taps Connect,
+        //           which the Compose tree turns into PermissionDeniedDialog.
+        val permissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { /* result is observed via the BleManager event flow */ }
+        val missing = requiredPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missingPermissions.isNotEmpty()) permissionLauncher.launch(missingPermissions.toTypedArray())
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
 
         enableEdgeToEdge()
         setContent {
             val vm: DashboardViewModel = viewModel()
             val isDarkTheme by vm.isDarkTheme.collectAsStateWithLifecycle()
+            val windowSize = calculateWindowSizeClass(this)
             SwitchDemonstratorTheme(darkTheme = isDarkTheme) {
-                SwitchDemoApp(viewModel = vm)
+                SwitchDemoApp(viewModel = vm, widthSizeClass = windowSize.widthSizeClass)
             }
         }
     }
 }
 
 @Composable
-fun SwitchDemoApp(viewModel: DashboardViewModel = viewModel()) {
-    val connectionState      by viewModel.connectionState.collectAsStateWithLifecycle()
-    val effectiveSwitchState by viewModel.effectiveSwitchState.collectAsStateWithLifecycle()
-    val effectiveVoltage     by viewModel.effectiveVoltage.collectAsStateWithLifecycle()
-    val effectiveIsWarning   by viewModel.effectiveIsWarning.collectAsStateWithLifecycle()
-    val effectiveLogMessages by viewModel.effectiveLogMessages.collectAsStateWithLifecycle()
-    val deviceName           by viewModel.bleDeviceName.collectAsStateWithLifecycle()
-    val isDarkTheme          by viewModel.isDarkTheme.collectAsStateWithLifecycle()
-    val isDemoMode           by viewModel.isDemoMode.collectAsStateWithLifecycle()
-    val showRawHex           by viewModel.showRawHex.collectAsStateWithLifecycle()
-    val showIndicatorLabels  by viewModel.showIndicatorLabels.collectAsStateWithLifecycle()
-    val blinkRateMs          by viewModel.blinkRateMs.collectAsStateWithLifecycle()
-    val firmwareVersion      by viewModel.firmwareVersion.collectAsStateWithLifecycle()
-    val scanTimedOut         by viewModel.scanTimedOut.collectAsStateWithLifecycle()
+fun SwitchDemoApp(
+    viewModel: DashboardViewModel,
+    widthSizeClass: WindowWidthSizeClass
+) {
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val haptic  = LocalHapticFeedback.current
 
-    var currentScreen by remember { mutableStateOf("dashboard") }
-    val haptic = LocalHapticFeedback.current
+    var currentScreen by rememberSaveable(stateSaver = ScreenSaver) {
+        mutableStateOf<Screen>(Screen.Dashboard)
+    }
 
-    // Haptic on connection state change
-    var prevConnection by remember { mutableStateOf(connectionState) }
-    LaunchedEffect(connectionState) {
-        if (connectionState != prevConnection) {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            prevConnection = connectionState
+    var showBluetoothOffDialog by remember { mutableStateOf(false) }
+    var showPermissionDialog   by remember { mutableStateOf(false) }
+    var showDisconnectDialog   by remember { mutableStateOf(false) }
+    val snackbarHostState      = remember { SnackbarHostState() }
+
+    // Listen to BLE events from the manager (FIXED #5, #6)
+    LaunchedEffect(Unit) {
+        viewModel.bleEvents.collect { ev ->
+            when (ev) {
+                BleManager.Event.BluetoothDisabled -> showBluetoothOffDialog = true
+                BleManager.Event.PermissionDenied  -> showPermissionDialog   = true
+            }
         }
     }
-    // Haptic on horn
-    LaunchedEffect(effectiveSwitchState.horn) {
-        if (effectiveSwitchState.horn) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+    // Snackbar feedback for settings changes (FIXED #28)
+    LaunchedEffect(Unit) {
+        viewModel.settingsToast.collect { msg ->
+            snackbarHostState.showSnackbar(msg, withDismissAction = true)
+        }
+    }
+    // FIXED #56: differentiated haptics
+    var prevConnection by remember { mutableStateOf(ui.connectionState) }
+    LaunchedEffect(ui.connectionState) {
+        if (ui.connectionState != prevConnection) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            prevConnection = ui.connectionState
+        }
+    }
+    LaunchedEffect(ui.switchState.indicator) {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
-    val config      = LocalConfiguration.current
-    val isLandscape = config.screenWidthDp > config.screenHeightDp
-    val bgColor     = Color(0xFF050710)
+    // FIXED #36: BackHandler — go to dashboard before exiting.
+    BackHandler(enabled = currentScreen != Screen.Dashboard) {
+        currentScreen = Screen.Dashboard
+    }
 
-    if (isLandscape) {
-        // Landscape: sidebar left, content right
-        Row(modifier = Modifier.fillMaxSize().background(bgColor).systemBarsPadding()) {
-            Column(modifier = Modifier.width(160.dp).fillMaxHeight()) {
+    // FIXED #54: onboarding gates the rest of the UI on first launch.
+    if (!ui.onboardingDone) {
+        OnboardingScreen(onFinish = { viewModel.markOnboardingDone() })
+        return
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost   = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            Column {
                 BleConnectBar(
-                    connectionState = connectionState,
-                    onToggle        = { viewModel.toggleBleConnection() },
-                    scanTimedOut    = scanTimedOut,
-                    modifier        = Modifier.fillMaxWidth().weight(1f)
+                    connectionState  = ui.connectionState,
+                    reconnectAttempt = ui.reconnectAttempt,
+                    scanTimedOut     = ui.scanTimedOut,
+                    onToggle         = {
+                        when (ui.connectionState) {
+                            BleConnectionState.CONNECTED -> showDisconnectDialog = true   // FIXED #10
+                            else -> viewModel.toggleBleConnection()
+                        }
+                    }
                 )
                 BottomNavBar(
                     currentScreen = currentScreen,
-                    onNavigate    = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); currentScreen = it }
+                    onNavigate    = { currentScreen = it }
                 )
             }
-            Box(modifier = Modifier.weight(1f).fillMaxHeight().background(bgColor)) {
-                ScreenContent(currentScreen, viewModel, connectionState, effectiveSwitchState, effectiveVoltage, effectiveIsWarning, effectiveLogMessages, deviceName, isDarkTheme, isDemoMode, showRawHex, showIndicatorLabels, blinkRateMs, firmwareVersion)
-            }
         }
-    } else {
-        // Portrait: original layout
-        Scaffold(
-            containerColor = bgColor,
-            bottomBar = {
-                Column {
-                    BleConnectBar(connectionState = connectionState, onToggle = { viewModel.toggleBleConnection() }, scanTimedOut = scanTimedOut)
-                    BottomNavBar(currentScreen = currentScreen, onNavigate = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); currentScreen = it })
+    ) { innerPadding ->
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            .background(MaterialTheme.colorScheme.background)
+        ) {
+            // FIXED #51: slide + fade between screens.
+            AnimatedContent(
+                targetState   = currentScreen,
+                transitionSpec = {
+                    val forward = Screen.all.indexOf(targetState) >= Screen.all.indexOf(initialState)
+                    val dir = if (forward) 1 else -1
+                    slideInHorizontally(initialOffsetX = { dir * it / 6 }) + fadeIn() togetherWith
+                    slideOutHorizontally(targetOffsetX = { -dir * it / 6 }) + fadeOut()
+                },
+                label = "screenTransition"
+            ) { screen ->
+                when (screen) {
+                    is Screen.Dashboard -> DashboardScreen(
+                        state          = ui,
+                        widthSizeClass = widthSizeClass,
+                        onToggleDemo   = { viewModel.toggleDemoMode() },
+                        onClearLog     = { /* For now log lives in BleManager — clearing only affects demo log */ }
+                    )
+                    is Screen.Settings -> SettingsScreen(
+                        currentDeviceName            = ui.deviceName,
+                        onDeviceNameChanged          = { viewModel.updateDeviceName(it) },
+                        isDarkTheme                  = ui.isDarkTheme,
+                        onDarkThemeChanged           = { viewModel.setDarkTheme(it) },
+                        showRawHex                   = ui.showRawHex,
+                        onShowRawHexChanged          = { viewModel.setShowRawHex(it) },
+                        showIndicatorLabels          = ui.showIndicatorLabels,
+                        onShowIndicatorLabelsChanged = { viewModel.setShowIndicatorLabels(it) },
+                        usePlainLabels               = ui.usePlainLabels,
+                        onUsePlainLabelsChanged      = { viewModel.setUsePlainLabels(it) },
+                        blinkRateMs                  = ui.blinkRateMs,
+                        onBlinkRateMsChanged         = { viewModel.setBlinkRateMs(it) },
+                        isDemoMode                   = ui.isDemoMode,
+                        onStartDemo                  = { viewModel.startDemoMode() },
+                        onStopDemo                   = { viewModel.stopDemoMode() }
+                    )
+                    is Screen.About -> AboutScreen(firmwareVersion = ui.firmwareVersion)
                 }
             }
-        ) { innerPadding ->
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding).background(bgColor)) {
-                ScreenContent(currentScreen, viewModel, connectionState, effectiveSwitchState, effectiveVoltage, effectiveIsWarning, effectiveLogMessages, deviceName, isDarkTheme, isDemoMode, showRawHex, showIndicatorLabels, blinkRateMs, firmwareVersion)
-            }
         }
+    }
+
+    // ---- Modal dialogs ----
+    if (showBluetoothOffDialog) {
+        BluetoothOffDialog(
+            onConfirm = {
+                showBluetoothOffDialog = false
+                context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            },
+            onDismiss = { showBluetoothOffDialog = false }
+        )
+    }
+    if (showPermissionDialog) {
+        PermissionDeniedDialog(
+            onConfirm = {
+                showPermissionDialog = false
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            },
+            onDismiss = { showPermissionDialog = false }
+        )
+    }
+    if (showDisconnectDialog) {
+        DisconnectConfirmDialog(
+            onConfirm = {
+                showDisconnectDialog = false
+                viewModel.confirmDisconnect()
+            },
+            onDismiss = { showDisconnectDialog = false }
+        )
     }
 }
 
-@Composable
-private fun ScreenContent(
-    currentScreen: String,
-    viewModel: DashboardViewModel,
-    connectionState: BleConnectionState,
-    effectiveSwitchState: SwitchState,
-    effectiveVoltage: Float,
-    effectiveIsWarning: Boolean,
-    effectiveLogMessages: List<String>,
-    deviceName: String,
-    isDarkTheme: Boolean,
-    isDemoMode: Boolean,
-    showRawHex: Boolean,
-    showIndicatorLabels: Boolean,
-    blinkRateMs: Long,
-    firmwareVersion: String?
-) {
-    AnimatedContent(targetState = currentScreen, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screenTransition") { screen ->
-        when (screen) {
-            "dashboard" -> DashboardScreen(
-                switchState         = effectiveSwitchState,
-                voltage             = effectiveVoltage,
-                isWarning           = effectiveIsWarning,
-                logMessages         = effectiveLogMessages,
-                bleConnectionState  = connectionState,
-                blinkRateMs         = blinkRateMs,
-                showIndicatorLabels = showIndicatorLabels,
-                showRawHex          = showRawHex,
-                isDemoMode          = isDemoMode,
-                firmwareVersion     = firmwareVersion
-            )
-            "settings" -> SettingsScreen(
-                currentDeviceName            = deviceName,
-                onDeviceNameChanged          = { viewModel.updateDeviceName(it) },
-                isDarkTheme                  = isDarkTheme,
-                onDarkThemeChanged           = { viewModel.setDarkTheme(it) },
-                showRawHex                   = showRawHex,
-                onShowRawHexChanged          = { viewModel.setShowRawHex(it) },
-                showIndicatorLabels          = showIndicatorLabels,
-                onShowIndicatorLabelsChanged = { viewModel.setShowIndicatorLabels(it) },
-                blinkRateMs                  = blinkRateMs,
-                onBlinkRateMsChanged         = { viewModel.setBlinkRateMs(it) },
-                isDemoMode                   = isDemoMode,
-                onStartDemo                  = { viewModel.startDemoMode() },
-                onStopDemo                   = { viewModel.stopDemoMode() }
-            )
-            "about" -> AboutScreen(firmwareVersion = firmwareVersion)
-        }
-    }
-}
+/** Saver for [Screen] sealed class so navigation survives configuration changes. */
+private val ScreenSaver = androidx.compose.runtime.saveable.Saver<Screen, String>(
+    save    = { it.route },
+    restore = { Screen.fromRoute(it) }
+)

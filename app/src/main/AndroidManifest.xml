@@ -4,7 +4,8 @@
     <!-- BLE Permissions -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
@@ -14,16 +15,22 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/elmos_logo"
-        android:roundIcon="@drawable/elmos_logo"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:windowSoftInputMode="adjustResize"
-        android:theme="@style/Theme.SwitchDemonstrator">
+        android:theme="@style/Theme.App.Starting">
+        <!--
+            FIXED #57: android:windowSoftInputMode is per-Activity, not per-Application.
+            FIXED #58: Removed android:configChanges so the system can correctly call
+                       onConfigurationChanged. ViewModel + Compose handle rotation cleanly.
+            FIXED #47: theme="Theme.App.Starting" engages the SplashScreen API.
+            FIXED #49: icon points to mipmap/ic_launcher (adaptive icon).
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|screenLayout"
+            android:windowSoftInputMode="adjustResize"
             android:screenOrientation="unspecified">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
