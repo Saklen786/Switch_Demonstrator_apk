@@ -222,7 +222,10 @@ class BleManager(
             val stateInt = json.optInt("state", 16)
             val volts    = json.optDouble("adc_volts", 0.0).toFloat()
             if (json.has("fw") && _firmwareVersion.value == null) {
-                _firmwareVersion.value = json.optString("fw", null)
+                // Kotlin 2.x is strict about JSONObject.optString's non-null default
+                // parameter; use the single-arg form and convert empty -> null ourselves.
+                val fw = json.optString("fw")
+                _firmwareVersion.value = if (fw.isNotBlank()) fw else null
             }
             processDebounced(stateInt, volts, jsonStr.trim())
         } catch (_: Exception) { /* malformed — wait for next chunk */ }
