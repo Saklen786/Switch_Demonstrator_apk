@@ -1,43 +1,38 @@
 package org.ssay.switchdemo.ui.components
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Text
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.*
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.ssay.switchdemo.R
-import org.ssay.switchdemo.ui.theme.*
+import org.ssay.switchdemo.data.Screen
 
-private data class NavItemData(
-    val key: String,
-    val label: String,
-    val iconRes: Int?,
-    val isCustomIcon: Boolean = false
-)
-
-private val navItems = listOf(
-    NavItemData("dashboard", "Dashboard", R.drawable.icon_dashboard),
-    NavItemData("settings",  "Settings",  R.drawable.icon_setting),
-    NavItemData("about",     "About",     null, isCustomIcon = true)
-)
-
+/**
+ * FIXED #14, #33, #34, #35, #53:
+ *  - Iterates [Screen.all] (sealed-class) instead of magic strings.
+ *  - All icons are vector drawables (consistent visual style).
+ *  - Each tab is at least 56dp tall and uses the Material `selectable` Role,
+ *    which announces the right TalkBack state.
+ */
 @Composable
 fun BottomNavBar(
-    currentScreen: String,
-    onNavigate: (String) -> Unit,
+    currentScreen: Screen,
+    onNavigate: (Screen) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -45,69 +40,69 @@ fun BottomNavBar(
             .fillMaxWidth()
             .drawBehind {
                 drawLine(
-                    color       = CardBorder,
+                    color       = androidx.compose.ui.graphics.Color(0x33FFFFFF),
                     start       = Offset(0f, 0f),
                     end         = Offset(size.width, 0f),
                     strokeWidth = 1.5f
                 )
             }
-            .background(DarkNavBar)
-            // FIXED: pushes buttons above the Android system gesture / button bar
+            .background(MaterialTheme.colorScheme.surface)
             .navigationBarsPadding()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        navItems.forEach { item ->
-            val isActive = currentScreen == item.key
-            val color    = if (isActive) NeonPink else GreyText
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    // FIXED: consistent minimum height across all three tabs
-                    .defaultMinSize(minHeight = 56.dp)
-                    .clickable { onNavigate(item.key) }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier         = Modifier.size(26.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (item.isCustomIcon) {
-                        Canvas(modifier = Modifier.size(26.dp)) {
-                            drawCircle(
-                                color  = color,
-                                radius = 12.dp.toPx(),
-                                style  = Stroke(width = 1.5.dp.toPx())
-                            )
-                        }
-                        Text(
-                            text       = "i",
-                            fontSize   = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color      = color,
-                            textAlign  = TextAlign.Center
-                        )
-                    } else {
-                        // FIXED: icon size matched to About circle size (26dp)
-                        Image(
-                            painter            = painterResource(item.iconRes!!),
-                            contentDescription = item.label,
-                            modifier           = Modifier.size(26.dp),
-                            colorFilter        = ColorFilter.tint(color)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text       = item.label,
-                    fontSize   = 10.sp,
-                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                    color      = color,
-                    textAlign  = TextAlign.Center
-                )
-            }
+        Screen.all.forEach { screen ->
+            NavBarItem(
+                screen = screen,
+                isActive = screen == currentScreen,
+                onClick  = { onNavigate(screen) },
+                modifier = Modifier.weight(1f)
+            )
         }
+    }
+}
+
+@Composable
+private fun NavBarItem(
+    screen: Screen,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val (label, painter) = when (screen) {
+        is Screen.Dashboard -> "Dashboard" to painterResource(R.drawable.ic_dashboard)
+        is Screen.Settings  -> "Settings"  to painterResource(R.drawable.ic_settings)
+        is Screen.About     -> "About"     to painterResource(R.drawable.ic_info_outline)
+    }
+    val color =
+        if (isActive) MaterialTheme.colorScheme.secondary
+        else          MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+
+    Column(
+        modifier = modifier
+            .heightIn(min = 56.dp)
+            .selectable(
+                selected = isActive,
+                role     = Role.Tab,
+                onClick  = onClick
+            )
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            painter            = painter,
+            contentDescription = label,
+            tint               = color,
+            modifier           = Modifier.size(26.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text       = label,
+            fontSize   = 11.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+            color      = color,
+            textAlign  = TextAlign.Center
+        )
     }
 }

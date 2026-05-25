@@ -1,3 +1,132 @@
 <resources>
-    <string name="app_name">Switch Demonstrator</string>
+    <!-- FIXED #48: shorter, more recognizable launcher name -->
+    <string name="app_name">Elmos E521.39</string>
+    <string name="app_full_name">Elmos E521.39 Switch Demonstrator</string>
+
+    <!-- Connection states -->
+    <string name="conn_disconnected">Disconnected</string>
+    <string name="conn_scanning">Scanning</string>
+    <string name="conn_connected">Connected</string>
+    <string name="conn_reconnecting">Reconnecting</string>
+    <string name="conn_not_found">Device Not Found</string>
+    <string name="conn_tap_connect">Tap to connect</string>
+    <string name="conn_tap_disconnect">Tap to disconnect</string>
+    <string name="conn_tap_retry">Tap to retry scan</string>
+    <string name="conn_attempt_format">Attempt %1$d of %2$d</string>
+
+    <!-- Bluetooth-off / permission dialogs (FIXED #5, #6) -->
+    <string name="bt_off_title">Bluetooth is off</string>
+    <string name="bt_off_body">Turn Bluetooth on to connect to your demonstrator board.</string>
+    <string name="bt_off_open">Open Bluetooth settings</string>
+
+    <string name="perm_denied_title">Bluetooth permission needed</string>
+    <string name="perm_denied_body">This app needs Bluetooth scan and connect permission to find the demonstrator board. Open settings to grant it.</string>
+    <string name="perm_denied_open">Open app settings</string>
+
+    <!-- Disconnect confirmation (FIXED #10) -->
+    <string name="disconnect_title">Disconnect from device?</string>
+    <string name="disconnect_body">You can reconnect at any time by tapping the connection bar.</string>
+    <string name="disconnect_confirm">Disconnect</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Voltage gauge (FIXED #15, #16) -->
+    <string name="voltage_label">Switch reading</string>
+    <string name="voltage_subtitle">Voltage from the resistor ladder</string>
+    <string name="voltage_no_data">— V</string>
+    <string name="voltage_no_data_caption">No data — connect the device</string>
+
+    <!-- Activity log (FIXED #18) -->
+    <string name="log_title">Activity log</string>
+    <string name="log_clear">Clear</string>
+    <string name="log_show">Show</string>
+    <string name="log_hide">Hide</string>
+    <string name="log_live">LIVE</string>
+    <string name="log_hex">HEX</string>
+
+    <!-- Demo mode (FIXED #20, #26) -->
+    <string name="demo_banner">Demo mode — showing simulated data</string>
+    <string name="demo_start">Start demo</string>
+    <string name="demo_stop">Stop demo</string>
+
+    <!-- Settings (FIXED #23, #24, #25, #27) -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_device_name">Bluetooth device name</string>
+    <string name="settings_device_name_helper">Default: RE_Switch_Dash. Whitespace and special characters are removed automatically.</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_saved">Saved</string>
+
+    <string name="settings_display">Display</string>
+    <string name="settings_dark_theme">Dark theme</string>
+    <string name="settings_dark_theme_sub">Switch between dark and light UI</string>
+    <string name="settings_indicator_labels">Indicator labels</string>
+    <string name="settings_indicator_labels_sub">Show LEFT / RIGHT / BEAM labels on the motorcycle</string>
+    <string name="settings_plain_labels">Plain-language switch names</string>
+    <string name="settings_plain_labels_sub">Use \"Low beam\" instead of \"DIPPER\", etc.</string>
+
+    <string name="settings_blink_title">Indicator blink speed</string>
+    <string name="settings_blink_slow">Slow</string>
+    <string name="settings_blink_normal">Normal</string>
+    <string name="settings_blink_fast">Fast</string>
+
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_show_advanced">Show advanced options</string>
+    <string name="settings_raw_hex">Raw hex log</string>
+    <string name="settings_raw_hex_sub">Display each log line as raw hexadecimal bytes (developer use)</string>
+
+    <string name="settings_how_it_works">How it works</string>
+    <string name="settings_how_it_works_body">A 17-position rotary switch on the handlebar feeds a resistor ladder. The Elmos E521.39 IC measures the divider voltage, the PICO microcontroller polls it via ADC and broadcasts the JSON state over BLE — what you see on this dashboard is the live feed.</string>
+
+    <string name="settings_change_saved">Setting saved</string>
+
+    <!-- About (FIXED #30, #31) -->
+    <string name="about_title">About</string>
+    <string name="about_what_title">What is the E521.39?</string>
+    <string name="about_what_body">The Elmos E521.39 is a high-precision automotive ADC designed for resistor-ladder switch decoding. A single analog input reliably distinguishes 17+ switch positions on a two-wheeler handlebar — replacing a thick wiring harness with a single signal line.</string>
+    <string name="about_features_title">Key features</string>
+    <string name="about_feature_1">17 distinguishable switch states</string>
+    <string name="about_feature_2">Resistor-ladder ADC decoding</string>
+    <string name="about_feature_3">BLE telemetry to this dashboard</string>
+    <string name="about_feature_4">Automotive-grade noise rejection</string>
+    <string name="about_howto_title">How to use this demo</string>
+    <string name="about_howto_1">Power the demonstrator board.</string>
+    <string name="about_howto_2">Tap the connection bar and grant Bluetooth permissions.</string>
+    <string name="about_howto_3">Toggle the handlebar switch and watch the dashboard update in real time.</string>
+    <string name="about_howto_4">No hardware? Tap the demo button to see a simulated cycle.</string>
+    <string name="about_contact_title">Contact &amp; support</string>
+    <string name="about_contact_body">Built by SSAY for Elmos product demonstrations.\nFor questions, contact your Elmos representative.</string>
+    <string name="about_developed_by">Developed by SSAY</string>
+    <string name="about_app_version">App version %1$s</string>
+    <string name="about_firmware">Firmware: %1$s</string>
+
+    <!-- Onboarding (FIXED #54) -->
+    <string name="onb_skip">Skip</string>
+    <string name="onb_next">Next</string>
+    <string name="onb_done">Got it</string>
+    <string name="onb_1_title">Welcome to the Elmos E521.39 demo</string>
+    <string name="onb_1_body">A live view of how a single ADC line decodes 17 motorcycle handlebar switch positions.</string>
+    <string name="onb_2_title">Connect over Bluetooth</string>
+    <string name="onb_2_body">Power the demonstrator board, tap the connection bar at the bottom, and grant Bluetooth access.</string>
+    <string name="onb_3_title">Read the dashboard</string>
+    <string name="onb_3_body">Voltage shows the live ADC reading. The motorcycle graphic mirrors the active switches. The log streams every event.</string>
+
+    <!-- Switch state plain-language labels (FIXED #55) -->
+    <string name="switch_dipper">Low beam</string>
+    <string name="switch_upper">High beam</string>
+    <string name="switch_pass">Flash to pass</string>
+    <string name="switch_indicator_left">Left indicator</string>
+    <string name="switch_indicator_right">Right indicator</string>
+    <string name="switch_horn">Horn</string>
+    <string name="switch_warn">Hardware warning</string>
+
+    <!-- Accessibility (FIXED #52) -->
+    <string name="cd_status_connected">Connection status: connected</string>
+    <string name="cd_status_disconnected">Connection status: disconnected</string>
+    <string name="cd_status_scanning">Connection status: scanning</string>
+    <string name="cd_status_reconnecting">Connection status: reconnecting</string>
+    <string name="cd_voltage_format">ADC voltage reading: %1$.2f volts</string>
+    <string name="cd_voltage_no_data">ADC voltage reading: no data</string>
+    <string name="cd_motorcycle">Motorcycle graphic showing the current handlebar switch state</string>
+    <string name="cd_logo">Elmos logo</string>
+    <string name="cd_clear_log">Clear activity log</string>
+    <string name="cd_demo_toggle">Toggle simulated demo mode</string>
 </resources>
