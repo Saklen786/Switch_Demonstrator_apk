@@ -31,24 +31,25 @@ fun DashboardScreen(
     isWarning: Boolean,
     logMessages: List<String>,
     bleConnectionState: BleConnectionState,
+    blinkRateMs: Long = 500L,
+    showIndicatorLabels: Boolean = true,
+    showRawHex: Boolean = false,
+    isDemoMode: Boolean = false,
+    firmwareVersion: String? = null,
     modifier: Modifier = Modifier
 ) {
-    // -----------------------------------------------------------------------
-    // Responsive sizing — derive scale from actual screen width
-    // -----------------------------------------------------------------------
-    val config        = LocalConfiguration.current
-    val screenW       = config.screenWidthDp
-    val isCompact     = screenW < 380           // small phone (e.g. 360dp)
-    val isExpanded    = screenW >= 600          // tablet / large phone landscape
+    val config     = LocalConfiguration.current
+    val screenW    = config.screenWidthDp
+    val isCompact  = screenW < 380
+    val isExpanded = screenW >= 600
 
-    val hPad          = if (isExpanded) 32.dp else if (isCompact) 10.dp else 16.dp
-    val vPad          = if (isExpanded) 24.dp else 12.dp
-    val sectionGap    = if (isCompact) 10.dp else 14.dp
-
-    val titleSize     = if (isExpanded) 24.sp else if (isCompact) 17.sp else 20.sp
-    val subtitleSize  = if (isExpanded) 13.sp else 10.sp
-    val dotSize       = if (isCompact) 12.dp else 14.dp
-    val logoSize      = if (isExpanded) 60.dp else if (isCompact) 36.dp else 44.dp
+    val hPad       = if (isExpanded) 32.dp else if (isCompact) 10.dp else 16.dp
+    val vPad       = if (isExpanded) 24.dp else 12.dp
+    val sectionGap = if (isCompact) 10.dp else 14.dp
+    val titleSize    = if (isExpanded) 24.sp else if (isCompact) 17.sp else 20.sp
+    val subtitleSize = if (isExpanded) 13.sp else 10.sp
+    val dotSize      = if (isCompact) 12.dp else 14.dp
+    val logoSize     = if (isExpanded) 60.dp else if (isCompact) 36.dp else 44.dp
 
     Column(
         modifier = modifier
@@ -57,77 +58,37 @@ fun DashboardScreen(
             .padding(horizontal = hPad, vertical = vPad),
         verticalArrangement = Arrangement.spacedBy(sectionGap)
     ) {
-
-        // --- Header --------------------------------------------------------
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Logo: the PNG has a black background.
-            // BlendMode.Screen removes pure-black pixels and lets the dark app
-            // background show through, while keeping the crimson design vivid.
-            Box(
-                modifier = Modifier
-                    .size(logoSize)
-                    .graphicsLayer { blendMode = BlendMode.Screen }
-            ) {
-                Image(
-                    painter          = painterResource(R.drawable.elmos_logo),
-                    contentDescription = "Elmos Logo",
-                    modifier         = Modifier.fillMaxSize(),
-                    contentScale     = ContentScale.Fit
-                )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(logoSize).graphicsLayer { blendMode = BlendMode.Screen }) {
+                Image(painter = painterResource(R.drawable.elmos_logo), contentDescription = "Elmos Logo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             }
-
             Spacer(modifier = Modifier.width(10.dp))
-
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text       = "E521.39 IC",
-                    fontSize   = titleSize,
-                    fontWeight = FontWeight.Bold,
-                    color      = NeonCyan
-                )
-                Text(
-                    text          = "Switch Demonstrator",
-                    fontSize      = subtitleSize,
-                    color         = GreyText,
-                    letterSpacing = 1.sp
-                )
+                Text(text = "E521.39 IC", fontSize = titleSize, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Text(text = "Switch Demonstrator", fontSize = subtitleSize, color = GreyText, letterSpacing = 1.sp)
+                if (isDemoMode) Text(text = "● DEMO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonPink, letterSpacing = 1.sp)
+                if (firmwareVersion != null) Text(text = "FW: $firmwareVersion", fontSize = 9.sp, color = GreyText)
             }
-
-            // Connection status dot
             Image(
-                painter = painterResource(
-                    when (bleConnectionState) {
-                        BleConnectionState.CONNECTED    -> R.drawable.status_green
-                        BleConnectionState.SCANNING     -> R.drawable.status_yellow
-                        BleConnectionState.DISCONNECTED -> R.drawable.status_red
-                    }
-                ),
+                painter = painterResource(when (bleConnectionState) {
+                    BleConnectionState.CONNECTED    -> R.drawable.status_green
+                    BleConnectionState.SCANNING     -> R.drawable.status_yellow
+                    BleConnectionState.DISCONNECTED -> R.drawable.status_red
+                }),
                 contentDescription = "Connection Status",
                 modifier = Modifier.size(dotSize)
             )
         }
 
-        // --- Voltage Gauge -------------------------------------------------
-        VoltageGauge(
-            voltage   = voltage,
-            isWarning = isWarning,
-            compact   = isCompact
-        )
+        VoltageGauge(voltage = voltage, isWarning = isWarning, compact = isCompact)
 
-        // --- Motorcycle Graphic --------------------------------------------
-        // fillMaxWidth — BoxWithConstraints inside drives height from aspect ratio
         MotorcycleGraphic(
-            switchState = switchState,
-            modifier    = Modifier.fillMaxWidth()
+            switchState         = switchState,
+            blinkRateMs         = blinkRateMs,
+            showIndicatorLabels = showIndicatorLabels,
+            modifier            = Modifier.fillMaxWidth()
         )
 
-        // --- Activity Log --------------------------------------------------
-        DataStreamTerminal(
-            logMessages = logMessages,
-            compact     = isCompact
-        )
+        DataStreamTerminal(logMessages = logMessages, compact = isCompact, showRawHex = showRawHex)
     }
 }

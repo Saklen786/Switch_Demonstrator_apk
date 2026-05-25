@@ -22,6 +22,10 @@ class BleManager(private val context: Context) {
             setOf(10, 11), setOf(8, 9), setOf(12, 3),
             setOf(13, 3), setOf(14, 3), setOf(15, 3)
         )
+
+        const val SCAN_TIMEOUT_MS = 10_000L
+        const val AUTO_RECONNECT_DELAY_MS = 3_000L
+        const val MAX_RECONNECT_ATTEMPTS = 5
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -32,20 +36,17 @@ class BleManager(private val context: Context) {
     private var scanCallback: ScanCallback? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Debounce state
     private var pendingStateInt = 6
     private var currentStateInt = 6
     private var debounceJob: Job? = null
 
-    // -----------------------------------------------------------------------
-    // Reassembly buffer for fragmented BLE packets.
-    // Default MTU = 23 bytes → 20 bytes payload.  A typical JSON payload such
-    // as {"state":0,"adc_volts":12.34}  is ~33 chars and gets split across two
-    // packets.  We buffer until we have a balanced { … } before parsing.
-    // -----------------------------------------------------------------------
+    private var reconnectAttempts = 0
+    private var lastDeviceName: String = ""
+    private var userRequestedDisconnect = false
+    private var reconnectJob: Job? = null
+
     private val receiveBuffer = StringBuilder()
 
-    // --- Exposed flows ---
     private val _connectionState = MutableStateFlow(BleConnectionState.DISCONNECTED)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
 
@@ -55,20 +56,24 @@ class BleManager(private val context: Context) {
     private val _logMessages = MutableStateFlow(listOf("System ready.", "Awaiting connection..."))
     val logMessages: StateFlow<List<String>> = _logMessages.asStateFlow()
 
+    private val _firmwareVersion = MutableStateFlow<String?>(null)
+    val firmwareVersion: StateFlow<String?> = _firmwareVersion.asStateFlow()
+
+    private val _scanTimedOut = MutableStateFlow(false)
+    val scanTimedOut: StateFlow<Boolean> = _scanTimedOut.asStateFlow()
+
     private fun log(msg: String) {
         _logMessages.update { list -> (list + msg).takeLast(50) }
     }
 
-    // --- GATT Callback ---
     private val gattCallback = object : BluetoothGattCallback() {
 
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     log("Device connected. Negotiating MTU...")
-                    // Request a larger MTU so long JSON payloads fit in one packet.
-                    // discoverServices() is called inside onMtuChanged after the
-                    // negotiation completes (or immediately on failure).
+                    reconnectAttempts = 0
+                    _scanTimedOut.value = false
                     gatt.requestMtu(512)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -80,14 +85,17 @@ class BleManager(private val context: Context) {
                     synchronized(receiveBuffer) { receiveBuffer.clear() }
                     gatt.close()
                     this@BleManager.gatt = null
+                    if (!userRequestedDisconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS && lastDeviceName.isNotBlank()) {
+                        scheduleReconnect()
+                    } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                        log("Auto-reconnect: max attempts ($MAX_RECONNECT_ATTEMPTS) reached.")
+                    }
                 }
             }
         }
 
-        // Called after requestMtu(). Proceed to service discovery once we know
-        // the final MTU (whether the full 512 was granted or a smaller value).
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-            val payload = mtu - 3  // ATT overhead = 3 bytes
+            val payload = mtu - 3
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 log("MTU negotiated: $mtu bytes ($payload byte payload).")
             } else {
@@ -101,61 +109,28 @@ class BleManager(private val context: Context) {
                 log("Service discovery failed (status $status).")
                 return
             }
-
             val service = gatt.getService(NUS_SERVICE_UUID)
-            if (service == null) {
-                log("UART service not found on device.")
-                return
-            }
-
+            if (service == null) { log("UART service not found on device."); return }
             val txChar = service.getCharacteristic(NUS_TX_CHAR_UUID)
-            if (txChar == null) {
-                log("TX characteristic not found.")
-                return
-            }
-
-            // Step 1: register local (Android-side) notification interest
+            if (txChar == null) { log("TX characteristic not found."); return }
             if (!gatt.setCharacteristicNotification(txChar, true)) {
-                log("setCharacteristicNotification failed.")
-                return
+                log("setCharacteristicNotification failed."); return
             }
-
-            // Step 2: write CCCD so the peripheral actually sends notifications
             val descriptor = txChar.getDescriptor(CCCD_UUID)
-            if (descriptor == null) {
-                log("CCCD descriptor not found.")
-                return
-            }
-
+            if (descriptor == null) { log("CCCD descriptor not found."); return }
             val writeResult: Boolean =
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    // API 33+ — non-deprecated overload
-                    gatt.writeDescriptor(
-                        descriptor,
-                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    ) == BluetoothStatusCodes.SUCCESS
+                    gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothStatusCodes.SUCCESS
                 } else {
                     @Suppress("DEPRECATION")
                     descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                     @Suppress("DEPRECATION")
                     gatt.writeDescriptor(descriptor)
                 }
-
-            if (writeResult) {
-                log("Enabling notifications...")
-            } else {
-                log("Descriptor write failed — check peripheral.")
-            }
-            // CONNECTED state is confirmed inside onDescriptorWrite below
+            if (writeResult) log("Enabling notifications...") else log("Descriptor write failed — check peripheral.")
         }
 
-        // Fires after CCCD write completes — this is the earliest safe point to
-        // set CONNECTED and start receiving characteristic notifications.
-        override fun onDescriptorWrite(
-            gatt: BluetoothGatt,
-            descriptor: BluetoothGattDescriptor,
-            status: Int
-        ) {
+        override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (descriptor.uuid == CCCD_UUID) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     _connectionState.value = BleConnectionState.CONNECTED
@@ -168,68 +143,46 @@ class BleManager(private val context: Context) {
             }
         }
 
-        // API 33+ notification callback
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray
-        ) {
+        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
             if (characteristic.uuid == NUS_TX_CHAR_UUID) handleReceivedData(value)
         }
 
-        // Legacy notification callback for API < 33
         @Deprecated("Deprecated in API 33")
         @Suppress("DEPRECATION")
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic
-        ) {
+        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 if (characteristic.uuid == NUS_TX_CHAR_UUID) handleReceivedData(characteristic.value)
             }
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Data handling — reassemble fragmented packets into complete JSON objects
-    // -----------------------------------------------------------------------
     private fun handleReceivedData(data: ByteArray) {
         synchronized(receiveBuffer) {
             receiveBuffer.append(String(data, Charsets.UTF_8))
-
             val buf = receiveBuffer.toString()
-
-            // Find first '{' and last '}' — only parse when we have a balanced object
             val start = buf.indexOf('{')
             val end   = buf.lastIndexOf('}')
-
-            if (start < 0 || end <= start) return // incomplete — wait for next packet
-
+            if (start < 0 || end <= start) return
             val jsonStr = buf.substring(start, end + 1)
-
-            // Keep any trailing bytes (next packet started) in the buffer
             receiveBuffer.clear()
             if (end + 1 < buf.length) receiveBuffer.append(buf.substring(end + 1))
-
             try {
                 val json     = JSONObject(jsonStr)
                 val stateInt = json.optInt("state", 16)
                 val volts    = json.optDouble("adc_volts", 0.0).toFloat()
+                if (json.has("fw") && _firmwareVersion.value == null) {
+                    _firmwareVersion.value = json.optString("fw", null)
+                }
                 processDebounced(stateInt, volts, jsonStr.trim())
-            } catch (_: Exception) {
-                // Malformed JSON — discard silently
-            }
+            } catch (_: Exception) { }
         }
     }
 
-    // --- Debounce ---
     private fun processDebounced(stateInt: Int, volts: Float, raw: String) {
         _switchState.update { it.copy(adcVolts = volts) }
-
         if (stateInt != pendingStateInt) {
             pendingStateInt = stateInt
             debounceJob?.cancel()
-
             val delayMs = if (setOf(currentStateInt, stateInt) in NOISY_TRANSITIONS) 250L else 30L
             debounceJob = scope.launch {
                 delay(delayMs)
@@ -247,49 +200,55 @@ class BleManager(private val context: Context) {
         _switchState.value = mapStateIntToSwitchState(stateInt, volts)
     }
 
-    // --- Scan & Connect ---
+    private fun scheduleReconnect() {
+        reconnectAttempts++
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            log("Auto-reconnect attempt $reconnectAttempts of $MAX_RECONNECT_ATTEMPTS in ${AUTO_RECONNECT_DELAY_MS / 1000}s...")
+            delay(AUTO_RECONNECT_DELAY_MS)
+            if (!userRequestedDisconnect && _connectionState.value == BleConnectionState.DISCONNECTED) {
+                scanAndConnect(lastDeviceName)
+            }
+        }
+    }
+
     fun scanAndConnect(deviceName: String) {
         if (_connectionState.value != BleConnectionState.DISCONNECTED) return
-
         val adapter = bluetoothAdapter ?: run { log("Bluetooth not available."); return }
         if (!adapter.isEnabled) { log("Bluetooth is disabled."); return }
-
+        lastDeviceName = deviceName
+        userRequestedDisconnect = false
         _connectionState.value = BleConnectionState.SCANNING
+        _scanTimedOut.value = false
         log("Scanning for \"$deviceName\"...")
-
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val name = result.device.name ?: return
-                // Case-insensitive match — device may advertise "RE_SWITCH_DASH"
-                // while the user typed "RE_Switch_Dash"
                 if (name.equals(deviceName, ignoreCase = true)) {
                     stopScan()
                     log("Found: ${result.device.address}")
-                    gatt = result.device.connectGatt(
-                        context, false, gattCallback, BluetoothDevice.TRANSPORT_LE
-                    )
+                    gatt = result.device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
                 }
             }
-
             override fun onScanFailed(errorCode: Int) {
                 log("Scan failed (error $errorCode).")
                 _connectionState.value = BleConnectionState.DISCONNECTED
+                _scanTimedOut.value = false
             }
         }
         scanCallback = callback
-
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
-
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         scanner?.startScan(emptyList(), settings, callback)
-
         scope.launch {
-            delay(10_000)
+            delay(SCAN_TIMEOUT_MS)
             if (_connectionState.value == BleConnectionState.SCANNING) {
                 stopScan()
+                _scanTimedOut.value = true
                 log("Device not found. Scan timed out.")
                 _connectionState.value = BleConnectionState.DISCONNECTED
+                if (!userRequestedDisconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    scheduleReconnect()
+                }
             }
         }
     }
@@ -300,6 +259,9 @@ class BleManager(private val context: Context) {
     }
 
     fun disconnect() {
+        userRequestedDisconnect = true
+        reconnectJob?.cancel()
+        reconnectAttempts = 0
         stopScan()
         gatt?.disconnect()
         if (_connectionState.value == BleConnectionState.SCANNING) {

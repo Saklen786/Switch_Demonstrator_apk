@@ -30,43 +30,39 @@ fun VoltageGauge(
     modifier: Modifier = Modifier
 ) {
     val accentColor by animateColorAsState(
-        targetValue    = if (isWarning) NeonPink else NeonCyan,
-        animationSpec  = tween(300),
-        label          = "voltageColor"
+        targetValue   = if (isWarning) NeonPink else NeonCyan,
+        animationSpec = tween(300),
+        label         = "voltageColor"
     )
 
-    // Responsive sizing
-    val config       = LocalConfiguration.current
-    val screenW      = config.screenWidthDp
-    val gaugeHeight  = when {
+    val config      = LocalConfiguration.current
+    val screenW     = config.screenWidthDp
+    val gaugeHeight = when {
         screenW >= 600 -> 120.dp
         compact        -> 80.dp
         else           -> 96.dp
     }
-    val labelSize   = if (compact) 10.sp else 11.sp
-    val valueSize   = if (compact) 30.sp else 36.sp
-    val unitSize    = if (compact) 14.sp else 18.sp
-    val iconSize    = if (compact) 32.dp else 40.dp
-    val hPad        = if (compact) 14.dp else 20.dp
+    val labelSize = if (compact) 10.sp else 11.sp
+    val valueSize = if (compact) 30.sp else 36.sp
+    val unitSize  = if (compact) 14.sp else 18.sp
+    val iconSize  = if (compact) 32.dp else 40.dp
+    val hPad      = if (compact) 14.dp else 20.dp
 
     Box(modifier = modifier.fillMaxWidth().height(gaugeHeight)) {
         Image(
-            painter      = painterResource(R.drawable.voltage_background),
+            painter            = painterResource(R.drawable.voltage_background),
             contentDescription = null,
-            modifier     = Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillBounds
+            modifier           = Modifier.fillMaxSize(),
+            contentScale       = ContentScale.FillBounds
         )
-
         Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = hPad),
+            modifier              = Modifier.fillMaxSize().padding(horizontal = hPad),
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text          = "Battery Voltage",
+                    text          = "ADC Voltage",   // FIXED: was "Battery Voltage"
                     fontSize      = labelSize,
                     fontWeight    = FontWeight.Bold,
                     color         = accentColor,
@@ -84,7 +80,6 @@ fun VoltageGauge(
                     }
                 )
             }
-
             Image(
                 painter            = painterResource(R.drawable.icon_voltage),
                 contentDescription = "Voltage",

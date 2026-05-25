@@ -13,10 +13,6 @@ data class SwitchState(
     val adcVolts: Float = 0f
 )
 
-/**
- * Maps the integer state (0–16) from the Pico BLE payload to a [SwitchState].
- * Direct port of the Python map_enum_to_state logic.
- */
 fun mapStateIntToSwitchState(stateInt: Int, adcVolts: Float = 0f): SwitchState {
     return when (stateInt) {
         0  -> SwitchState(headlight = HeadlightMode.UPPER, adcVolts = adcVolts)
@@ -39,3 +35,21 @@ fun mapStateIntToSwitchState(stateInt: Int, adcVolts: Float = 0f): SwitchState {
         else -> SwitchState(warn = true, adcVolts = adcVolts)
     }
 }
+
+// Demo mode: cycles through all switch states to simulate hardware
+val DEMO_STATES: List<Pair<Int, Float>> = listOf(
+    Pair(6,  3.28f),
+    Pair(0,  3.28f),
+    Pair(8,  3.27f),
+    Pair(1,  3.27f),
+    Pair(10, 3.26f),
+    Pair(2,  3.26f),
+    Pair(12, 3.25f),
+    Pair(3,  3.25f),
+    Pair(7,  3.28f),
+    Pair(9,  3.27f),
+    Pair(11, 3.26f),
+    Pair(13, 3.25f),
+    Pair(16, 3.20f),
+    Pair(6,  3.28f)
+)

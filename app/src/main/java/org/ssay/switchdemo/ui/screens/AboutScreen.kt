@@ -21,6 +21,7 @@ import org.ssay.switchdemo.ui.theme.*
 
 @Composable
 fun AboutScreen(
+    firmwareVersion: String? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -29,15 +30,8 @@ fun AboutScreen(
             .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Header
-        Text(
-            text = "About",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = NeonPink
-        )
+        Text(text = "About", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = NeonPink)
 
-        // Info card
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -49,47 +43,28 @@ fun AboutScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Image(
-                painter = painterResource(R.drawable.elmos_logo),
+                painter            = painterResource(R.drawable.elmos_logo),
                 contentDescription = "Elmos Logo",
-                modifier = Modifier.height(60.dp).width(100.dp),
-                contentScale = ContentScale.Fit
+                modifier           = Modifier.height(60.dp).width(100.dp),
+                contentScale       = ContentScale.Fit
             )
-
-            Text(
-                text = "E521.39 Switch Demonstrator",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = WhiteText,
-                textAlign = TextAlign.Center
-            )
-
-            Text(
-                text = "Version 1.0.0",
-                fontSize = 13.sp,
-                color = NeonCyan,
-                fontWeight = FontWeight.Medium
-            )
-
+            Text(text = "E521.39 Switch Demonstrator", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = WhiteText, textAlign = TextAlign.Center)
+            Text(text = "App Version 1.0.0", fontSize = 13.sp, color = NeonCyan, fontWeight = FontWeight.Medium)
+            if (firmwareVersion != null) {
+                Text(text = "Firmware: $firmwareVersion", fontSize = 13.sp, color = NeonGreen, fontWeight = FontWeight.Medium)
+            }
             Spacer(modifier = Modifier.height(8.dp))
-
+            // FIXED: "via Bluetooth Low Energy" → "via ADC"
             Text(
-                text = "This application demonstrates the capabilities of the E521.39 IC for two-wheeler switch monitoring via Bluetooth Low Energy.",
-                fontSize = 12.sp,
-                color = GreyText,
-                textAlign = TextAlign.Center,
+                text       = "This application demonstrates the capabilities of the E521.39 IC for two-wheeler switch monitoring via ADC.",
+                fontSize   = 12.sp,
+                color      = GreyText,
+                textAlign  = TextAlign.Center,
                 lineHeight = 18.sp
             )
-
             Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Developed by SSAY",
-                fontSize = 13.sp,
-                color = LightGreyText,
-                fontWeight = FontWeight.Medium
-            )
+            Text(text = "Developed by SSAY", fontSize = 13.sp, color = LightGreyText, fontWeight = FontWeight.Medium)
         }
-
         Spacer(modifier = Modifier.weight(1f))
     }
 }

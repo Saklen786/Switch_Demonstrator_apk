@@ -30,8 +30,8 @@ private data class NavItemData(
 
 private val navItems = listOf(
     NavItemData("dashboard", "Dashboard", R.drawable.icon_dashboard),
-    NavItemData("settings", "Settings", R.drawable.icon_setting),
-    NavItemData("about", "About", null, isCustomIcon = true)
+    NavItemData("settings",  "Settings",  R.drawable.icon_setting),
+    NavItemData("about",     "About",     null, isCustomIcon = true)
 )
 
 @Composable
@@ -45,64 +45,67 @@ fun BottomNavBar(
             .fillMaxWidth()
             .drawBehind {
                 drawLine(
-                    color = CardBorder,
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
+                    color       = CardBorder,
+                    start       = Offset(0f, 0f),
+                    end         = Offset(size.width, 0f),
                     strokeWidth = 1.5f
                 )
             }
             .background(DarkNavBar)
+            // FIXED: pushes buttons above the Android system gesture / button bar
+            .navigationBarsPadding()
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         navItems.forEach { item ->
             val isActive = currentScreen == item.key
-            val color = if (isActive) NeonPink else GreyText
+            val color    = if (isActive) NeonPink else GreyText
 
             Column(
                 modifier = Modifier
                     .weight(1f)
+                    // FIXED: consistent minimum height across all three tabs
+                    .defaultMinSize(minHeight = 56.dp)
                     .clickable { onNavigate(item.key) }
                     .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
-                    modifier = Modifier.size(24.dp),
+                    modifier         = Modifier.size(26.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (item.isCustomIcon) {
-                        Canvas(modifier = Modifier.size(24.dp)) {
+                        Canvas(modifier = Modifier.size(26.dp)) {
                             drawCircle(
-                                color = color,
-                                radius = 11.dp.toPx(),
-                                style = Stroke(width = 1.5.dp.toPx())
+                                color  = color,
+                                radius = 12.dp.toPx(),
+                                style  = Stroke(width = 1.5.dp.toPx())
                             )
                         }
                         Text(
-                            text = "i",
-                            fontSize = 14.sp,
+                            text       = "i",
+                            fontSize   = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = color,
-                            textAlign = TextAlign.Center
+                            color      = color,
+                            textAlign  = TextAlign.Center
                         )
                     } else {
+                        // FIXED: icon size matched to About circle size (26dp)
                         Image(
-                            painter = painterResource(item.iconRes!!),
+                            painter            = painterResource(item.iconRes!!),
                             contentDescription = item.label,
-                            modifier = Modifier.size(22.dp),
-                            colorFilter = ColorFilter.tint(color)
+                            modifier           = Modifier.size(26.dp),
+                            colorFilter        = ColorFilter.tint(color)
                         )
                     }
                 }
-
                 Spacer(modifier = Modifier.height(4.dp))
-
                 Text(
-                    text = item.label,
-                    fontSize = 10.sp,
+                    text       = item.label,
+                    fontSize   = 10.sp,
                     fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                    color = color,
-                    textAlign = TextAlign.Center
+                    color      = color,
+                    textAlign  = TextAlign.Center
                 )
             }
         }
